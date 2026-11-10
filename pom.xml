@@ -20,8 +20,6 @@
     </properties>
 
     <modules>
-        <module>saludo-api</module>
-        <module>saludo-cliente</module>
         <module>inventario-api</module>
         <module>alertas-cliente</module>
     </modules>
