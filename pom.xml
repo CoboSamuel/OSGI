@@ -22,6 +22,7 @@
     <modules>
         <module>saludo-api</module>
         <module>saludo-cliente</module>
+        <module>inventario-api</module>
     </modules>
 
 </project>
