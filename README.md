@@ -1,341 +1,269 @@
+# BikeStore — Inventario y alertas con OSGi y Apache Karaf
 
-Sistema modular OSGi con Apache Karaf
-Autor: Samuel Cobo
-Carrera: Ingeniería de Software
-Asignatura: Diseño y Arquitectura de Software
-Repositorio: github.com/CoboSamuel/OSGI
-Estado: Implementación y pruebas manuales completadas.
+**Autor:** Samuel Cobo  
+**Carrera:** Ingeniería de Software  
+**Asignatura:** Diseño y Arquitectura de Software  
+**Repositorio:** https://github.com/CoboSamuel/OSGI  
+**Versión de BikeStore:** rama [`mejora/bikestore-osgi`](https://github.com/CoboSamuel/OSGI/tree/mejora/bikestore-osgi)
 
-1. ¿De qué trata este proyecto?
-Este proyecto consiste en crear una aplicación modular en Java con OSGi y ejecutarla dentro de Apache Karaf. La idea es comprobar, mediante una práctica sencilla, que un sistema puede estar formado por módulos relacionados que se comuniquen sin quedar completamente dependientes entre sí.
+## 1. ¿Qué problema queríamos resolver?
 
-Para hacerlo desarrollamos dos bundles (módulos OSGi): uno ofrece un servicio de saludos y el otro lo utiliza. Después comprobamos qué ocurre al detener y volver a iniciar cada módulo mientras Karaf permanece encendido.
+En una tienda de bicicletas, el control de existencias y las alertas de stock son responsabilidades relacionadas, pero no tienen por qué formar un único componente indivisible. Si el inventario se detiene para mantenimiento, sería útil que el módulo de alertas no se cierre junto con él y pueda reconocer cuándo vuelve a estar disponible.
 
-El objetivo no era únicamente obtener un mensaje en pantalla. Lo importante era demostrar el ciclo de vida independiente de los bundles, la comunicación mediante servicios y el bajo acoplamiento.
+Para demostrar esta situación desarrollamos **BikeStore**, una aplicación pequeña con **dos bundles OSGi** que se comunican mediante el **registro de servicios de Apache Karaf**:
 
-2. Tecnologías y herramientas utilizadas
-Herramienta	Uso dentro del proyecto
-Java 21	JDK utilizado para desarrollar y ejecutar la práctica.
-Java 17 (release)	Versión de compatibilidad del bytecode configurada para la compilación.
-Maven 3.9.9 / Maven Wrapper	Compilación, dependencias y empaquetado de ambos módulos.
-OSGi Core 8.0.0	Interfaces y mecanismos del entorno modular OSGi.
-Apache Felix Maven Bundle Plugin 5.1.9	Generación de JAR con metadatos de bundle OSGi.
-Apache Karaf 4.4.12	Contenedor donde instalamos, iniciamos y detuvimos los bundles.
-Visual Studio Code y PowerShell	Edición del código y ejecución de comandos en Windows.
-Git y GitHub	Control de versiones, historial de cambios y entrega de evidencias.
-7-Zip	Extracción de Karaf después de un problema con las rutas de Windows.
-Importante: OSGi es la tecnología que permite organizar y administrar módulos dinámicamente. Karaf es el contenedor que utilizamos para ejecutarlos y administrarlos desde una consola.
+- **Inventario:** almacena cantidades de bicicletas en memoria, permite consultar existencias y registrar una venta simulada.
+- **Alertas:** consume el contrato de inventario, comprueba el stock de una bicicleta y muestra una alerta si quedan pocas unidades. También detecta la aparición y desaparición del servicio.
 
-3. ¿Qué construimos?
-La solución se dividió en dos bundles funcionales.
+El objetivo principal **no es construir una tienda comercial completa**, sino demostrar modularidad, comunicación mediante interfaces, administración independiente del ciclo de vida y recuperación de servicios durante la ejecución.
 
-Bundle A: proveedor de saludos (saludo-api)
-Este módulo contiene:
+## 2. Herramientas utilizadas
 
-SaludoService: interfaz que define el método saludar(String nombre).
-SaludoServiceImpl: implementación que construye el saludo.
-SaludoActivator: componente que registra el servicio cuando se inicia el bundle y lo retira cuando se detiene.
-El saludo que devuelve el servicio es:
+| Herramienta | Uso |
+|---|---|
+| Java 21.0.12 | JDK utilizado durante el desarrollo y la ejecución |
+| Compatibilidad Java 17 | Configuración `maven.compiler.release=17` para compilar los JAR |
+| Maven Wrapper | Compilación y empaquetado sin exigir Maven instalado globalmente |
+| OSGi Core 8.0.0 | API para bundles, activadores, servicios y eventos |
+| Apache Felix Maven Bundle Plugin 5.1.9 | Construcción de JAR con metadatos OSGi |
+| Apache Karaf 4.4.12 | Contenedor para instalar, iniciar, detener y desinstalar bundles |
+| VS Code, PowerShell, Git y GitHub | Desarrollo, ejecución, versionamiento y evidencias |
 
-Hola, Samuel! Bienvenido al sistema OSGi.
-La interfaz se exporta como un paquete OSGi para que otros bundles puedan conocerla. La implementación permanece interna al proveedor.
+**Diferencia importante:** OSGi establece el modelo modular y el ciclo de vida; **Karaf es el entorno donde ejecutamos ese modelo**. Maven prepara los artefactos, pero `BUILD SUCCESS` por sí solo no prueba su comportamiento dentro de Karaf.
 
-Bundle B: consumidor de saludos (saludo-cliente)
-Este módulo contiene ClienteActivator. Cuando inicia:
+## 3. Arquitectura del sistema
 
-Se registra como oyente de cambios del servicio SaludoService.
-Busca el servicio en el registro de OSGi.
-Si está disponible, lo utiliza para mostrar el saludo.
-Si el servicio desaparece, informa que ya no está disponible, pero el bundle consumidor no se detiene.
-Si el servicio vuelve a registrarse, lo detecta y lo utiliza nuevamente.
-¿Cómo se comunican?
-┌───────────────────────────────────┐
-│ Bundle A: saludo-api              │
-│                                   │
-│ SaludoService (interfaz pública)  │
-│ SaludoServiceImpl (implementación)│
-│ SaludoActivator                   │
-└─────────────────┬─────────────────┘
-                  │ registra / retira
-                  ▼
-         ┌───────────────────┐
-         │ Registro de       │
-         │ servicios OSGi    │
-         └─────────┬─────────┘
-                   │ consulta / escucha cambios
-                   ▼
-┌───────────────────────────────────┐
-│ Bundle B: saludo-cliente          │
-│                                   │
-│ ClienteActivator                  │
-│ Consume SaludoService             │
-└───────────────────────────────────┘
-¿Por qué se eligió este diseño? Porque el consumidor trabaja con la interfaz y con el registro de servicios, no crea directamente una instancia de SaludoServiceImpl. Así puede detectar cuándo un proveedor está o no disponible. Esto reduce el acoplamiento entre implementaciones, aunque el consumidor sigue necesitando el contrato compartido de la interfaz.
+```mermaid
+flowchart TD
+    I["Bundle A: inventario-api<br/>InventarioService (interfaz exportada)<br/>InventarioServiceImpl (implementación privada)"]
+    R["Registro de servicios OSGi<br/>Apache Karaf"]
+    A["Bundle B: alertas-cliente<br/>AlertasActivator<br/>Consulta stock y detecta disponibilidad"]
+    I -->|Registra / retira InventarioService| R
+    A -->|Busca el servicio y escucha eventos| R
+    R -->|Entrega referencia de servicio| A
+```
 
-4. Organización del repositorio
+### Bundle A: `inventario-api`
+
+Sus componentes principales son:
+
+- **`InventarioService.java`:** contrato público que define `consultarStock(String codigo)` y `registrarVenta(String codigo, int cantidad)`.
+- **`InventarioServiceImpl.java`:** implementación interna que administra un `Map<String, Integer>` con las existencias. Los métodos son `synchronized` para proteger las operaciones del mapa frente a accesos simultáneos a esta instancia.
+- **`InventarioActivator.java`:** implementa `BundleActivator`; al comenzar registra una instancia del servicio con `context.registerService(...)` y al detenerse la desregistra.
+
+Inventario inicial de la demostración:
+
+| Código | Tipo | Unidades iniciales |
+|---|---|---:|
+| `MTB-001` | Bicicleta de montaña | 5 |
+| `RUTA-002` | Bicicleta de ruta | 12 |
+
+La implementación rechaza ventas con cantidad no positiva, productos inexistentes o existencias insuficientes. `consultarStock` devuelve `-1` si el código no existe. **Los datos están en memoria y se reinician al volver a crear el servicio; no hay base de datos ni persistencia.**
+
+### Bundle B: `alertas-cliente`
+
+El componente principal es **`AlertasActivator.java`**, que implementa `BundleActivator` y `ServiceListener`.
+
+Cuando inicia, registra un oyente para `InventarioService` y busca una referencia al servicio. Si lo encuentra, consulta la MTB-001; si tiene al menos cinco unidades, ejecuta una **venta simulada de tres bicicletas** y consulta el nuevo stock. Si quedan **tres unidades o menos**, imprime una alerta.
+
+Cuando el servicio se retira del registro OSGi, muestra que el inventario no está disponible, pero **el bundle de alertas sigue activo**. Cuando el servicio vuelve a registrarse, lo detecta y repite la comprobación.
+
+### ¿Por qué se considera bajo acoplamiento?
+
+El consumidor conoce **la interfaz `InventarioService`**, pero no construye ni referencia directamente `InventarioServiceImpl`. Por eso puede solicitar el servicio al registro OSGi, usarlo cuando existe y reaccionar si desaparece. **No implica ausencia total de dependencias**: ambos módulos comparten deliberadamente el contrato Java y el consumidor necesita ese paquete exportado para resolver sus clases.
+
+En el archivo Maven del proveedor se exporta `ec.udla.inventario.api` y se mantiene privada la implementación `ec.udla.inventario.impl`. En el consumidor la dependencia a `inventario-api` tiene alcance `provided`, ya que el contrato se resuelve en el entorno OSGi.
+
+## 4. Estructura del repositorio
+
+```text
 OSGI/
-├── .mvn/                         # Archivos de Maven Wrapper
-├── evidencias/
-│   ├── 01-bundles-activos.png
-│   ├── 02-proveedor-detenido.png
-│   ├── 03-proveedor-reiniciado.png
-│   └── 04-consumidor-detenido.png
-├── saludo-api/
+├── .mvn/                           # Configuración de Maven Wrapper
+├── inventario-api/
 │   ├── pom.xml
-│   └── src/main/java/ec/udla/saludo/
-│       ├── api/SaludoService.java
+│   └── src/main/java/ec/udla/inventario/
+│       ├── api/InventarioService.java
 │       └── impl/
-│           ├── SaludoServiceImpl.java
-│           └── SaludoActivator.java
-├── saludo-cliente/
+│           ├── InventarioServiceImpl.java
+│           └── InventarioActivator.java
+├── alertas-cliente/
 │   ├── pom.xml
-│   └── src/main/java/ec/udla/saludo/cliente/
-│       └── ClienteActivator.java
-├── .gitignore
-├── EVIDENCIAS.md
+│   └── src/main/java/ec/udla/alertas/cliente/
+│       └── AlertasActivator.java
+├── evidencias/                     # Capturas de las pruebas
+├── EVIDENCIAS.md                   # Explicación de cada comprobación
 ├── README.md
 ├── mvnw
 ├── mvnw.cmd
-└── pom.xml                       # Proyecto Maven principal
-El archivo pom.xml principal agrupa los módulos saludo-api y saludo-cliente. Cada módulo tiene su propio pom.xml, por lo que Maven puede compilar y empaquetar los dos dentro de un mismo proyecto.
+└── pom.xml                       # Maven multi-módulo
+```
 
-5. ¿Cómo desarrollamos el proyecto?
-Seguimos una secuencia de pasos y registramos cada avance importante con Git:
+El `pom.xml` principal enumera solamente `inventario-api` y `alertas-cliente`. En la rama `main` se conservó la **primera versión didáctica de saludos**; BikeStore se desarrolló y documentó en `mejora/bikestore-osgi`, para mantener separado el historial.
 
-Primero, preparamos el repositorio. Creamos la estructura inicial, configuramos Git y vinculamos el proyecto con GitHub.
+## 5. Cómo desarrollamos y comprobamos BikeStore
 
-Después, configuramos Maven. Agregamos Maven Wrapper para poder ejecutar la compilación sin exigir una instalación global de Maven. Se configuró la compilación con release 17, aunque en las pruebas utilizamos JDK 21.
+1. Partimos de un proyecto OSGi con Maven Wrapper y una primera demostración de servicios entre bundles.
+2. Creamos la rama `mejora/bikestore-osgi` para conservar el prototipo anterior.
+3. Desarrollamos `inventario-api`, lo compilamos y verificamos en Karaf que podía registrarse como servicio.
+4. Desarrollamos `alertas-cliente`, configurando su dependencia con la interfaz del inventario y la escucha de eventos OSGi.
+5. Corregimos problemas de estructura Maven y nombres de archivos Java. Por ejemplo, un archivo con una clase pública `AlertasActivator` debe llamarse `AlertasActivator.java` y estar en el módulo correcto.
+6. Ejecutamos `./mvnw` (en Windows, `mvnw.cmd`) y obtuvimos **`BUILD SUCCESS`** para los dos bundles.
+7. Instalamos ambos JAR en Apache Karaf y verificamos la venta, la alerta, la parada de cada módulo y la recuperación del servicio.
+8. Retiramos de la versión final los módulos de saludos; el proyecto final vuelve a tener **dos bundles funcionales**.
 
-Luego, desarrollamos el proveedor. Definimos la interfaz del servicio, su implementación y el activador encargado de registrarlo en OSGi.
+En la compilación se mostró `No tests to run`: eso significa que **no se ejecutaron pruebas unitarias automatizadas**. Las evidencias funcionales que presentamos corresponden a pruebas **manuales de integración en Karaf**.
 
-A continuación, desarrollamos el consumidor. Este módulo busca SaludoService, invoca el saludo y escucha los eventos de disponibilidad del servicio.
+## 6. Reproducir el proyecto desde cero (Windows)
 
-Finalmente, compilamos, instalamos los bundles en Karaf y probamos sus estados. Guardamos capturas y documentamos lo que sucedió en cada prueba.
+### 6.1. Descargar la rama correcta
 
-6. Cómo compilar el proyecto
-6.1. Descargar el repositorio
-En PowerShell:
-
-git clone https://github.com/CoboSamuel/OSGI.git
+```powershell
+git clone --branch mejora/bikestore-osgi https://github.com/CoboSamuel/OSGI.git
 cd OSGI
-6.2. Comprobar Java
+```
+
+> No confundir con `main`, que conserva la versión anterior del ejercicio.
+
+### 6.2. Compilar e instalar los artefactos en Maven local
+
+```powershell
 java -version
-La implementación fue probada con JDK 21.0.12. Para compilar se requiere un JDK compatible con la configuración del proyecto.
-
-6.3. Compilar e instalar los JAR en el repositorio local de Maven
-Desde la carpeta principal OSGI:
-
 .\mvnw.cmd clean install
-El comando realiza la compilación y el empaquetado de los dos módulos e instala sus artefactos en el repositorio local de Maven (.m2). En nuestra ejecución obtuvimos:
+```
 
-Sistema OSGi con Apache Karaf ......... SUCCESS
-Bundle Proveedor de Saludos ........... SUCCESS
-Bundle Consumidor de Saludos .......... SUCCESS
-BUILD SUCCESS
-Los JAR generados quedan en:
+Al finalizar debe aparecer `BUILD SUCCESS` y existir:
 
-saludo-api/target/saludo-api-1.0.0.jar
-saludo-cliente/target/saludo-cliente-1.0.0.jar
-También se instalaron en el repositorio local de Maven, lo que permitió invocarlos posteriormente desde Karaf mediante sus coordenadas mvn:.
+```text
+inventario-api/target/inventario-api-1.0.0.jar
+alertas-cliente/target/alertas-cliente-1.0.0.jar
+```
 
-Alcance de esta comprobación: en la compilación apareció No tests to run, por lo que BUILD SUCCESS demuestra que el proyecto compiló y se empaquetó correctamente; las pruebas funcionales se realizaron manualmente en Karaf, como se explica más adelante.
+`install` también publica los JAR en el repositorio Maven local (`.m2`), desde donde Karaf pudo resolverlos mediante `mvn:` durante nuestras pruebas.
 
-7. Cómo instalamos e iniciamos Apache Karaf
-Utilizamos Apache Karaf 4.4.12 en Windows y lo ubicamos en:
+### 6.3. Iniciar Apache Karaf
 
-C:\Karaf\apache-karaf-4.4.12
-Durante la preparación aparecieron dos problemas que también documentamos porque forman parte del proceso real de instalación.
+Instalar o extraer Apache Karaf 4.4.12. En nuestra computadora se ubicó en `C:\Karaf\apache-karaf-4.4.12`. En PowerShell:
 
-7.1. Error de Windows: ruta demasiado larga
-Al intentar extraer el ZIP con el Explorador de Windows apareció:
-
-Error 0x80010135: Path too long
-Para resolverlo mantuvimos el ZIP en una ruta corta (C:\Karaf) y usamos 7-Zip desde PowerShell:
-
-& "C:\Program Files\7-Zip\7z.exe" x "C:\Karaf\apache-karaf-4.4.12.zip" "-oC:\Karaf" -y
-La extracción terminó con:
-
-Everything is Ok
-Folders: 1228
-Files: 701
-Verificamos que el ejecutable de Karaf existiera:
-
-Test-Path "C:\Karaf\apache-karaf-4.4.12\bin\karaf.bat"
-Resultado: True.
-
-7.2. Error al iniciar: JAVA_HOME sin configurar
-El primer intento de iniciar Karaf mostró:
-
-JAVA_HOME not set
-Unable to retrieve JAVA_HOME from Registry
-JAVA_HOME is not valid: ""
-Configuramos Java para esa sesión de PowerShell:
-
+```powershell
 $env:JAVA_HOME = "C:\Program Files\Java\jdk-21.0.12"
 $env:Path = "$env:JAVA_HOME\bin;$env:Path"
-La ruta es la utilizada en nuestra computadora. En otro equipo debe reemplazarse por la ubicación real del JDK. Esta configuración se aplica a la terminal actual.
-
-Comprobamos que existiera Java en esa ubicación:
-
-Test-Path "$env:JAVA_HOME\bin\java.exe"
-Resultado: True.
-
-7.3. Inicio correcto de Karaf
-Ejecutamos:
-
 cd C:\Karaf\apache-karaf-4.4.12
 .\bin\karaf.bat
-Apareció la consola:
+```
 
-Apache Karaf (4.4.12)
-karaf@root()>
-Dentro de Karaf ejecutamos:
+La ruta de Java es un ejemplo de nuestra máquina: debe ajustarse al JDK realmente instalado. Si Karaf inicia, se muestra `karaf@root()>`.
 
+**Problemas que resolvimos en Windows:** el ZIP produjo el error `0x80010135: Path too long`; lo extrajimos desde una ruta corta con 7-Zip. Karaf también indicó `JAVA_HOME not set`, por lo que configuramos esa variable en PowerShell. Estos problemas eran del entorno, no del código OSGi.
+
+### 6.4. Instalar los bundles en Karaf
+
+**Los siguientes comandos se escriben dentro de Karaf**, no en PowerShell:
+
+```text
+bundle:install -s mvn:ec.udla/inventario-api/1.0.0
+bundle:install -s mvn:ec.udla/alertas-cliente/1.0.0
 bundle:list
-Inicialmente observamos un servicio interno de Karaf activo (ID 33). Con eso verificamos que el contenedor estaba encendido y aceptaba comandos OSGi.
+```
 
-Los comandos bundle:* se ejecutan dentro de Karaf, cuando aparece karaf@root()>. Los comandos git, mvnw y las variables $env: se ejecutan en PowerShell.
+Instalar primero el inventario permite que su servicio ya esté disponible cuando inicia Alertas. `-s` significa instalar **e iniciar**.
 
-8. Instalación y comprobación de los dos bundles
-Con Karaf iniciado y los artefactos compilados, instalamos primero el proveedor:
+En nuestra sesión de pruebas el inventario recibió el **ID 55** y las alertas el **ID 56**. **Estos IDs no son fijos**: deben consultarse siempre con `bundle:list` en cada instalación.
 
-bundle:install -s mvn:ec.udla/saludo-api/1.0.0
-Karaf respondió:
+## 7. Pruebas funcionales y resultados reales
 
-[saludo-api] Servicio de saludos registrado.
-Bundle ID: 53
-Luego instalamos el consumidor:
+### 7.1. Venta simulada y alerta de existencias
 
-bundle:install -s mvn:ec.udla/saludo-cliente/1.0.0
-La respuesta fue:
+Al iniciar Alertas con un inventario nuevo, la consola mostró:
 
-[saludo-cliente] Bundle B iniciado.
-[saludo-cliente] Hola, Samuel! Bienvenido al sistema OSGi.
-Bundle ID: 54
-El parámetro -s indica que el bundle debe iniciarse al instalarse.
+```text
+[alertas] Stock inicial MTB-001: 5
+[inventario] Venta realizada: 3 unidades de MTB-001
+[alertas] Venta simulada: 3 bicicletas MTB.
+[alertas] Stock actual MTB-001: 2
+[alertas] ALERTA: Stock bajo en MTB-001. Quedan 2 unidades.
+```
 
-Después ejecutamos bundle:list y obtuvimos:
+**Interpretación:** el consumidor obtuvo `InventarioService`, realizó operaciones mediante esa interfaz y aplicó su propia regla de alerta. El proveedor no necesita conocer la implementación de alertas.
 
-ID │ State  │ Lvl │ Version │ Name
-33 │ Active │  80 │ 4.4.12  │ Apache Karaf :: OSGi Services ::
-53 │ Active │  80 │ 1.0.0   │ Bundle Proveedor de Saludos
-54 │ Active │  80 │ 1.0.0   │ Bundle Consumidor de Saludos
-¿Qué comprobamos aquí? Que ambos módulos estaban Active y que el consumidor había localizado el servicio del proveedor y ejecutado el método de saludo.
+![Venta y alerta en Karaf](evidencias/bikestore-01-venta-alerta.png)
 
-Los dos bundles activos
+### 7.2. Detener Inventario sin detener Alertas
 
-9. Pruebas de inicio, parada y recuperación
-Esta fue la parte principal del trabajo: comprobar el comportamiento de los módulos sin cerrar Karaf.
-
-Nota: los IDs 53 y 54 son los obtenidos en nuestra sesión. Si se instala el proyecto en otra computadora, es necesario consultar los IDs reales con bundle:list.
-
-Prueba 1. Detener el proveedor sin detener el consumidor
-Ejecutamos:
-
-bundle:stop 53
+```text
+bundle:stop 55
 bundle:list
-La consola mostró:
+```
 
-[saludo-cliente] Servicio no disponible.
-[saludo-cliente] El Bundle B sigue activo.
-[saludo-api] Servicio de saludos detenido.
-Y los estados cambiaron a:
+Resultado observado:
 
-53 │ Resolved │ Bundle Proveedor de Saludos
-54 │ Active   │ Bundle Consumidor de Saludos
-Resultado: el proveedor se detuvo, pero el consumidor permaneció activo. Como el servicio ya no estaba disponible, el consumidor lo detectó e informó la situación. No pudo continuar generando saludos mientras el proveedor estuvo detenido, pero no se cayó ni fue necesario reiniciarlo.
+```text
+55 | Resolved | BikeStore - Bundle de Inventario
+56 | Active   | BikeStore - Bundle de Alertas
+```
 
-Proveedor detenido y consumidor activo
+**Interpretación:** el servicio desapareció, pero el consumidor siguió ejecutándose. Esto demuestra **disponibilidad parcial**, no que puedan consultarse existencias mientras el proveedor esté detenido.
 
-Prueba 2. Reiniciar el proveedor y recuperar el servicio
-Sin reiniciar Karaf ni el consumidor, ejecutamos:
+![Inventario detenido](evidencias/bikestore-02-inventario-detenido.png)
 
-bundle:start 53
+### 7.3. Reiniciar Inventario y recuperar el servicio
+
+```text
+bundle:start 55
 bundle:list
-La consola mostró:
+```
 
-[saludo-cliente] Servicio disponible nuevamente.
-[saludo-cliente] Hola, Samuel! Bienvenido al sistema OSGi.
-[saludo-api] Servicio de saludos registrado.
-Ambos bundles volvieron a aparecer Active.
+Alertas detectó el registro del servicio, volvió a consultar las existencias y mostró de nuevo la venta simulada y la alerta. **No fue necesario reiniciar Alertas ni Apache Karaf**.
 
-Resultado: el consumidor detectó automáticamente el regreso del servicio y volvió a utilizarlo. Esta prueba demuestra que el registro de servicios OSGi permite recuperar una funcionalidad durante la ejecución, sin reiniciar los demás módulos.
+![Servicio recuperado](evidencias/bikestore-03-servicio-recuperado.png)
 
-Proveedor reiniciado y comunicación recuperada
+### 7.4. Detener y reiniciar Alertas
 
-Prueba 3. Detener el consumidor sin detener el proveedor
-Ejecutamos:
-
-bundle:stop 54
+```text
+bundle:stop 56
 bundle:list
-La consola mostró:
+bundle:start 56
+bundle:list
+```
 
-[saludo-cliente] Bundle B detenido.
-Los estados fueron:
+Al detener Alertas, el inventario quedó `Active` y Alertas pasó a `Resolved`. Al reiniciarlo, ambos volvieron a `Active` y Alertas consultó el servicio disponible.
 
-53 │ Active   │ Bundle Proveedor de Saludos
-54 │ Resolved │ Bundle Consumidor de Saludos
-Resultado: el consumidor se detuvo, mientras el proveedor permaneció activo y conservó su ciclo de vida independiente.
+![Alertas detenido](evidencias/bikestore-04-alertas-detenido.png)
+![Alertas reiniciado](evidencias/bikestore-05-alertas-reiniciado.png)
 
-Consumidor detenido y proveedor activo
+Para ver cada prueba con su resultado, consultar [EVIDENCIAS.md](EVIDENCIAS.md).
 
-Prueba 4. Volver a iniciar el consumidor
-Ejecutamos:
+## 8. Atributos de calidad y límites de la demostración
 
-bundle:start 54
-Karaf respondió:
+| Atributo | Cómo lo comprobamos | Límite |
+|---|---|---|
+| Modularidad | Inventario y Alertas son bundles instalables por separado | Comparten el contrato del servicio |
+| Bajo acoplamiento | El cliente usa `InventarioService` y el registro OSGi | Existe dependencia de la interfaz exportada |
+| Recuperación dinámica | `ServiceListener` detecta que el proveedor regresa | No hay persistencia del estado entre reinicios |
+| Disponibilidad parcial | Alertas sigue `Active` si Inventario está `Resolved` | Durante la parada no puede consultar ni vender |
+| Mantenibilidad | Responsabilidades y paquetes están separados | Es un prototipo académico |
 
-[saludo-cliente] Bundle B iniciado.
-[saludo-cliente] Hola, Samuel! Bienvenido al sistema OSGi.
-Resultado: el consumidor pudo arrancar nuevamente y recuperar el uso del servicio. No hizo falta reconstruir los JAR ni reiniciar Karaf.
+**Limitaciones declaradas:** los datos se guardan solo en memoria; no se usa base de datos, API REST ni interfaz gráfica. La venta se **simula dentro del consumidor** al detectar inicialmente el servicio; no hay un proceso independiente de ventas ni vigilancia continua de cada cambio de inventario. Por ello no afirmamos haber implementado un sistema productivo de alertas en tiempo real.
 
-Resumen de resultados
-Comprobación	Resultado observado
-Compilación de los módulos	BUILD SUCCESS
-Instalación del proveedor	Bundle 53 Active
-Instalación del consumidor	Bundle 54 Active y saludo mostrado
-Detener proveedor	53 Resolved; 54 Active
-Volver a iniciar proveedor	Ambos Active; saludo recuperado
-Detener consumidor	53 Active; 54 Resolved
-Volver a iniciar consumidor	Consumidor iniciado; saludo mostrado
-10. ¿Qué conceptos de arquitectura demostramos?
-Modularidad. Cada bundle tiene una responsabilidad: uno publica el servicio y el otro lo consume.
+## 9. Por qué elegimos OSGi y no una única aplicación monolítica
 
-Bajo acoplamiento. El consumidor se comunica a través de SaludoService y del registro OSGi, en lugar de instanciar la implementación concreta. La dependencia con la interfaz compartida sí existe y es intencional.
+Para este ejercicio nos interesaba **controlar el ciclo de vida de cada componente durante la ejecución**. En una aplicación convencional donde todo está fuertemente unido en un solo proceso de arranque, detener un módulo de negocio sin afectar a otros requiere diseño adicional. OSGi ofrece un registro de servicios y operaciones de inicio/parada por bundle, que pudimos verificar directamente desde Karaf.
 
-Gestión independiente del ciclo de vida. Karaf permitió ejecutar bundle:stop y bundle:start sobre cada módulo individualmente, sin apagar el contenedor.
+Esto **no significa que cualquier aplicación monolítica sea incorrecta** ni que OSGi ofrezca alta disponibilidad por sí solo. La elección es adecuada aquí porque la actividad exige demostrar módulos relacionados, comunicación con bajo acoplamiento y cambios de disponibilidad sin apagar el contenedor.
 
-Disponibilidad parcial. Al detener el proveedor, el consumidor permaneció activo, aunque el saludo quedó temporalmente fuera de servicio. Esto no significa que toda la funcionalidad siguiera disponible, sino que el módulo consumidor pudo manejar la ausencia de su dependencia.
+## 10. Preguntas para la defensa ante el profesor
 
-Recuperación dinámica. Cuando el proveedor volvió a registrarse, el consumidor recibió el evento correspondiente y recuperó la funcionalidad sin reiniciarse.
+**¿Por qué dos bundles y no una sola clase?** Porque queríamos administrar el ciclo de vida de inventario y alertas de forma independiente, y demostrar la diferencia con evidencias concretas en Karaf.
 
-Mantenibilidad. Separar el contrato, la implementación y el consumo facilita entender y modificar cada responsabilidad.
+**¿Dónde está el bajo acoplamiento?** Alertas depende del contrato exportado `InventarioService` y busca una referencia en el registro OSGi. No crea directamente `InventarioServiceImpl`.
 
-11. Evidencias incluidas en GitHub
-Las capturas de pantalla se encuentran en la carpeta `evidencias/` y están explicadas con más detalle en `EVIDENCIAS.md`.
+**¿Qué ocurre si se detiene Inventario?** Alertas sigue `Active` y recibe el evento de retirada, pero no puede consultar stock hasta que el servicio vuelva. Por eso hablamos de disponibilidad parcial.
 
-Archivo	Qué demuestra
-01-bundles-activos.png	Ambos bundles activos y comunicación exitosa.
-02-proveedor-detenido.png	Proveedor detenido; consumidor todavía activo.
-03-proveedor-reiniciado.png	Recuperación del servicio al reiniciar el proveedor.
-04-consumidor-detenido.png	Consumidor detenido; proveedor todavía activo.
-Estas evidencias corresponden a una ejecución real, no a estados simulados.
+**¿Qué ocurre al reiniciar Inventario?** Registra un nuevo servicio, el consumidor detecta el evento `REGISTERED` y repite la consulta. Las existencias vuelven a sus valores iniciales porque son datos en memoria.
 
-12. Historial del desarrollo con Git
-El trabajo se dividió en commits para registrar los avances principales:
+**¿El sistema detecta cualquier venta en tiempo real?** No. La demostración consulta y simula la venta cuando se inicia Alertas o reaparece el servicio. Para alertas continuas serían necesarios eventos de cambios de stock u otra estrategia de seguimiento.
 
-Commit	Cambio realizado
-0f0d92b	Inicialización del proyecto OSGi.
-253b9c9	Configuración de Maven y Maven Wrapper.
-ab29150	Implementación del bundle proveedor de saludos.
-7dba1c1	Implementación del bundle consumidor.
-b781f4f	Documentación de las pruebas de ciclo de vida y sus capturas.
-El historial puede consultarse en los commits del repositorio.
+## 11. Conclusión
 
-13. Conclusión
-Con este trabajo pasamos de tener dos módulos Java compilados a ejecutarlos realmente dentro de Apache Karaf. Primero verificamos que el proyecto se construyera correctamente; después instalamos ambos bundles, comprobamos que se comunicaban y probamos qué ocurría cuando uno dejaba de estar disponible.
+BikeStore evolucionó de una práctica inicial de saludos a un caso de inventario de bicicletas con una regla de alerta. La compilación confirmó que los JAR estaban correctamente construidos; las pruebas en Karaf demostraron que el consumidor utilizó el servicio, que una venta simulada redujo el stock y que los bundles pudieron detenerse y recuperarse de manera independiente.
 
-La prueba más importante fue detener el proveedor y observar que el consumidor permanecía activo. Al iniciar nuevamente el proveedor, el consumidor recuperó automáticamente el servicio y volvió a mostrar el saludo. También comprobamos el escenario contrario: detener el consumidor no detuvo el proveedor.
-
-En conclusión, OSGi y Apache Karaf permitieron demostrar modularidad, comunicación mediante servicios y administración independiente de los bundles durante la ejecución. Las capturas, los comandos y los resultados incluidos en este repositorio permiten revisar cómo se comprobó cada requisito.
-
+La evidencia central es que **Inventario pasó a `Resolved` mientras Alertas permaneció `Active`, y Alertas recuperó el servicio cuando Inventario volvió a iniciarse**. Esa secuencia explica de forma concreta la utilidad de OSGi para modularidad y administración dinámica.
