@@ -11,19 +11,12 @@
         <version>1.0.0</version>
     </parent>
 
-    <artifactId>saludo-cliente</artifactId>
+    <artifactId>inventario-api</artifactId>
     <packaging>bundle</packaging>
 
-    <name>Bundle Consumidor de Saludos</name>
+    <name>BikeStore - Bundle de Inventario</name>
 
     <dependencies>
-        <dependency>
-            <groupId>ec.udla</groupId>
-            <artifactId>saludo-api</artifactId>
-            <version>1.0.0</version>
-            <scope>provided</scope>
-        </dependency>
-
         <dependency>
             <groupId>org.osgi</groupId>
             <artifactId>osgi.core</artifactId>
@@ -39,15 +32,16 @@
                 <artifactId>maven-bundle-plugin</artifactId>
                 <version>5.1.9</version>
                 <extensions>true</extensions>
+
                 <configuration>
                     <instructions>
-                        <Bundle-SymbolicName>ec.udla.saludo.cliente</Bundle-SymbolicName>
-                        <Bundle-Activator>ec.udla.saludo.cliente.ClienteActivator</Bundle-Activator>
-                        <Private-Package>ec.udla.saludo.cliente</Private-Package>
+                        <Bundle-SymbolicName>ec.udla.inventario.api</Bundle-SymbolicName>
+                        <Bundle-Activator>ec.udla.inventario.impl.InventarioActivator</Bundle-Activator>
+                        <Export-Package>ec.udla.inventario.api;version="1.0.0"</Export-Package>
+                        <Private-Package>ec.udla.inventario.impl</Private-Package>
                     </instructions>
                 </configuration>
             </plugin>
         </plugins>
     </build>
-
 </project>
